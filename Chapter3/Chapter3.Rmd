@@ -1,0 +1,103 @@
+---
+title: "Chapter 3"
+output:
+  html_document:
+    df_print: paged
+---
+
+## Setup
+
+```{r, echo=F, include=F}
+library(rethinking)
+data(homeworkch3)
+library(ggplot2)
+```
+
+
+## Question 1
+Using grid approximation, computer the posterior distribution for the probability of a birth being a boy. Assume a uniform prior probability. Which parameter value maximises the posterior probability?
+
+```{r Q1, include=T}
+set.seed(89)
+# Ascertain the total boys
+number_boys <- sum(birth1) + sum(birth2)
+# Ascertain the total births
+number_births <- length(birth1) + length(birth2)
+# Ascertain the total proportion of births that are boys
+boy_proportion <- number_boys/number_births
+
+# Create grid
+p <- seq(0,1,length.out=1001)
+# Create prior
+prior <- rep(1,1001)
+
+likelihood <- dbinom(number_boys,number_births,prob=p)
+posterior <- likelihood * prior
+
+#posterior <- posterior/sum(posterior)
+posterior <- data.frame(p,posterior)
+plot(x=p,y=posterior$posterior)
+
+mean <- posterior[posterior$posterior==max(posterior$posterior),]$p
+mean
+```
+
+## Question 2
+Using the sample function, draw 10000 random parameter values from the posterior distribution you calculated above. Use these samples to estimate the 50%, 89% and 97% highest posterior density intervals.
+
+```{r Q2}
+set.seed(89)
+posterior_samples <- sample(posterior$p, 10000, replace=TRUE, prob=posterior$posterior)
+# 50% Highest posterior density interval:
+quantile(posterior_samples,probs=c(.25, .75))
+# 89% Highest posterior density interval:
+quantile(posterior_samples,probs=c((1-(0.89))/2, 0.89 + (1-(0.89))/2))
+# 97% Highest posterior density interval:
+quantile(posterior_samples,probs=c((1-(0.97))/2, 0.97 + (1-(0.97))/2))
+```
+
+## Question 3
+Use rbinom to simulate 10000 replicates of 200 births. You should end up with 10000 numbers, each one a count of boys out of 200 births. Compare the distribution of predicted numbers of boys to the actual count in the data (111 boys out of 200 births). There are many good ways to visualise the simulations, but the dens command (part of the rethinking package) is probably the easiest way in this case. Does it look like the model fits the data well? That is, does the distribution of predictions include the actual observation as a central, likely outcome?
+
+```{r Q3}
+set.seed(89)
+births <- data.frame(simulations = rbinom(10000, 200, boy_proportion))
+ggplot(births, aes(x=simulations)) +
+  geom_density() +
+  theme_bw() +
+  geom_vline(xintercept = number_boys, col="blue") +
+  xlab('Boy births') 
+# The model appears to fit the data well
+```
+
+## Question 4
+Now compare 10000 counts of boys from 100 simulated first borns only to the number of boys in the first births, birth1. How does the model look in this light?
+
+```{r Q4}
+set.seed(89)
+
+births2 <- data.frame(sim=rbinom(10000,100,boy_proportion))
+ggplot(births2,aes(x=sim)) + 
+  geom_density() + 
+  geom_vline(xintercept = sum(birth1), col="blue") +
+  xlab('Boys as first born') +
+  theme_bw()
+
+# The model does not perform as well in this case. The actual proportion of boys from first-borns in the sample is quite a bit lower than the mean given by the model. It is, however, not highly improbable that we would observe 51 boys born first, given this model.
+```
+
+## Question 5
+The model assumes that sex of first and second births are independent. To check this assumption, focus now on the second births that followed female first borns. Compare 10000 simulated counts of boys to only those second births that followed girls. To do this correctly, you need to count the number of first borns who were girls and simulate that many births 10000 times. Compare the count of boys in your simulations to the actual observed count of boys following girls. How does the model look in this light? Any guesses what is going on in these data?
+
+```{r}
+set.seed(89)
+number_of_girls_from_first_birth <- length(birth1) - sum(birth1)
+births3 <- data.frame(sim=rbinom(10000, number_of_girls_from_first_birth, boy_proportion))
+ggplot(births3,aes(x=sim)) + 
+  geom_density() + 
+  geom_vline(xintercept = sum(birth2[birth1==0]), col="blue") +
+  xlab('Boys born on 2nd birth') + 
+  theme_bw()
+
+# It is clear that the model is not appropriate when looking at the actual proportion of boys following girls. The actual value (39) was almost never predicted given our model. It seems that there is some dependency on the sex of the first born child, as to the sex of the 2nd child. It may be some biological factor, or a bias in the selection of the sample.
+```
