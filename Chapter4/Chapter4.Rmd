@@ -1,0 +1,196 @@
+---
+title: "Statistical Rethinking - Chapter 4 Questions"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=F}
+library(rethinking)
+library(ggplot2)
+data(Howell1)
+d <- Howell1
+mean_weight <- mean(d$weight)
+sd_weight <- sd(d$weight)
+d$weight.s <- (d$weight - mean_weight)/sd_weight
+```
+
+## Question 1
+The weights listed below were recorded in the !Kung cencus, but heights were not recorded for these individuals. Provide predicted heights and 89% intervals (either HPDI or PI) for each of these individuals. That is, fill in the tble below, using model-based predictions.
+
+```{r Q1}
+set.seed(89)
+# Data for which we need to predict
+test_data <- data.frame(
+  individual = c(1,2,3,4,5),
+  weight = c(46.95, 43.72, 64.78, 32.59, 54.63)
+  )
+
+# Create model parameters
+flist <- alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b*weight, 
+  a ~ dnorm(138, 100),
+  b ~ dnorm(0, 10),
+  sigma ~ dunif(0,50)
+)
+
+m4.1 <- map(flist, d)
+post <- extract.samples(m4.1, 1000)
+
+prediction <- 0
+
+for (i in test_data$individual){
+  #predicted_height_samples <- extract.samples(m4.1)$a + ((test_data[test_data$individual==i, ]$weight - mean_weight) * extract.samples(m4.1)$b / sd_weight)
+  test_weight <- test_data[test_data$individual==i, ]$weight
+  predicted_height_samples <- rnorm(10000 ,post$a + test_weight*post$b, post$sigma)
+    
+    
+  prediction_temp <- data.frame(
+    individual = i,
+    mean_predicted_height = mean(predicted_height_samples), 
+    lower_quantile_89 = PI(predicted_height_samples, 0.89)[1],
+    upper_quantile_89 = PI(predicted_height_samples, 0.89)[2]
+  )
+  if(length(prediction)==1){
+    prediction <- prediction_temp
+  }
+  else{
+    prediction <- rbind(prediction, prediction_temp)
+  }
+}
+
+test_data <- merge(test_data, prediction, by="individual")
+test_data
+```
+
+## Question 2
+Select out all the rows in the Howell1 data with ages below 18 years of age. If you do it right,
+you should end up with a new data frame with 192 rows in it.
+
+(a) Fit a linear regression to these data, using map. Present and interpret the estimates. For every
+10 units of increase in weight, how much taller does the model predict a child gets?
+
+```{r Q2a}
+set.seed(89)
+d_child <- d[d$age < 18,]
+
+flist2 <- alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b*weight, 
+  a ~ dnorm(50, 20),
+  b ~ dnorm(4, 10),
+  sigma ~ dunif(0,50)
+)
+
+m4.2 <- map(flist2, d_child)
+mean(extract.samples(m4.2,10)$a)
+# A child with 0 weight would hypothetically be around 58 units tall
+mean(extract.samples(m4.2,10)$b)
+# For every extra 10 units of weight, the child would be around 27 units higher
+```
+
+(b) Plot the raw data, with height on the vertical axis and weight on the horizontal axis. Superimpose
+the MAP regression line and 89% HPDI for the mean. Also superimpose the 89% HPDI for
+predicted heights.
+
+```{r Q2b}
+weight.seq <- seq(from = 0, to = 50, by = 1)
+mu <- link(m4.2, data=data.frame(weight = weight.seq))
+mu.mean <- apply( mu , 2 , mean )
+mu.HPDI <- apply( mu , 2 , HPDI , prob=0.89 )
+weight_modeled = data.frame(weight = weight.seq, mean = mu.mean, hdpi=t(mu.HPDI))
+colnames(weight_modeled) <- c("weight","mean","lower","upper")
+
+ggplot(weight_modeled, aes(x=weight, y=mean)) +
+  geom_point() +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha=0.5) +
+  theme_bw() +
+  geom_point(data=d_child, aes(x=weight, y=height), col="blue") +
+  labs(x="weight", y="height")
+
+```
+
+(c) What aspects of the model fit concern you? Describe the kinds of assumptions you would
+change, if any, to improve the model. You don’t have to write any new code. Just explain
+
+```{r Q2c}
+# The model is too simplistic for the data, the relationship between weight and height is not very linear (after a point, around 20kg). I would assume that the regression is logarithmic (height increases logarithmically with weight). 
+```
+
+## Question 3
+Suppose a colleague of yours, who works on allometry, glances at the practice problems just
+above. Your colleague exclaims, “That’s silly. Everyone knows that it’s only the logarithm of body
+weight that scales with height!” Let’s take your colleague’s advice and see what happens.
+
+(a) Model the relationship between height (cm) and the natural logarithm of weight (log-kg). Use
+the entire Howell1 data frame, all 544 rows, adults and non-adults. Fit this model, using quadratic
+approximation:
+hi ~ Normal(mu(i); sigma)
+mu(i) = a + b log(wi)
+a ~ Normal(178; 100)
+b ~ Normal(0; 100)
+sigma ~ Uniform(0; 50)
+where h(i) is the height of individual i and w(i) is the weight (in kg) of individual i. The function for
+computing a natural log in R is just log. Can you interpret the resulting estimates?
+
+```{r Q3a}
+set.seed(89)
+
+flist3 <- alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b*log(weight), 
+  a ~ dnorm(0, 100),
+  b ~ dnorm(40, 40),
+  sigma ~ dunif(0,50)
+)
+
+m4.3 <- map(flist3, d)
+# When weight = 1 then the predicted height will be a. 
+```
+
+(b) Begin with this plot:
+R code
+plot( height ~ weight , data=Howell1 ,
+col=col.alpha(rangi2,0.4) )
+Then use samples from the quadratic approximate posterior of the model in (a) to superimpose on
+the plot: 
+(1) the predicted mean height as a function of weight, 
+
+```{r Q3b1}
+weight.seq2 <- seq(from = 1, to = 70, by = 1)
+mu2 <- link(m4.3, data=data.frame(weight = weight.seq2))
+mu.mean2 <- apply( mu2 , 2 , mean )
+mu.HPDI2 <- apply( mu2 , 2 , HPDI , prob=0.97 )
+weight_modeled2 = data.frame(weight = weight.seq2, mean = mu.mean2, hdpi=t(mu.HPDI2))
+colnames(weight_modeled2) <- c("weight","mean","lower","upper")
+
+# ppc
+post <- extract.samples( m4.3 )
+sim.height <- data.frame(weight = 1:70, t(apply(sim(m4.3, list(weight = weight.seq2)), 2, PI)))
+colnames(sim.height) <- c ("weight", "sim_lower", "sim_upper")
+
+weight_modeled2 <- merge(weight_modeled2, sim.height, by="weight")
+
+ggplot(weight_modeled2, aes(x=weight, y=mean)) +
+  geom_point() +
+  geom_ribbon(aes(ymin=lower, ymax=upper), alpha=0.8, fill='red') +
+  geom_ribbon(aes(ymin=sim_lower, ymax=sim_upper), alpha=0.6, fill="red") +
+  geom_point(data=d, aes(x=weight, y=height), col="blue", alpha=0.3) +
+  theme_bw() +
+  xlim(5, 65) +
+  ylim(40, 180)
+```
+
+(2) the 97% HPDI for the mean, and
+
+```{r Q3b2}
+
+```
+
+(3) the 97% HPDI for predicted heights.
+
+```{r Q3b3}
+
+```
+
