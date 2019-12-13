@@ -33,13 +33,14 @@ prior <- rep(1,1001)
 
 likelihood <- dbinom(number_boys,number_births,prob=p)
 posterior <- likelihood * prior
+posterior <- posterior/sum(posterior)
 
 #posterior <- posterior/sum(posterior)
 posterior <- data.frame(p,posterior)
 plot(x=p,y=posterior$posterior)
 
-mean <- posterior[posterior$posterior==max(posterior$posterior),]$p
-mean
+max_likelihood <- posterior[posterior$posterior==max(posterior$posterior),]$p
+max_likelihood
 ```
 
 ## Question 2
@@ -47,13 +48,13 @@ Using the sample function, draw 10000 random parameter values from the posterior
 
 ```{r Q2}
 set.seed(89)
-posterior_samples <- sample(posterior$p, 10000, replace=TRUE, prob=posterior$posterior)
+posterior_samples <- sample(posterior$p, size=10000, replace=TRUE, prob=posterior$posterior)
 # 50% Highest posterior density interval:
-quantile(posterior_samples,probs=c(.25, .75))
+rethinking::HPDI(posterior_samples, p=0.5)
 # 89% Highest posterior density interval:
-quantile(posterior_samples,probs=c((1-(0.89))/2, 0.89 + (1-(0.89))/2))
+rethinking::HPDI(posterior_samples, p=0.89)
 # 97% Highest posterior density interval:
-quantile(posterior_samples,probs=c((1-(0.97))/2, 0.97 + (1-(0.97))/2))
+rethinking::HPDI(posterior_samples, p=0.97)
 ```
 
 ## Question 3
