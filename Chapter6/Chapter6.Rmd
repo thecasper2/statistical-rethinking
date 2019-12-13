@@ -1,0 +1,225 @@
+---
+title: "Statistical Rethinking - Chapter 6 Questions"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=F}
+library(rethinking)
+library(ggplot2)
+library(magrittr)
+data(Howell1)
+d <- Howell1
+d$age <- (d$age - mean(d$age))/sd(d$age)
+set.seed( 1000 )
+i <- sample(1:nrow(d),size=nrow(d)/2)
+d1 <- d[ i , ]
+d2 <- d[ -i , ]
+```
+
+You now have two randomly formed data frames, each with 272 rows. The notion here is to use the
+cases in d1 to fit models and the cases in d2 to evaluate them.
+
+Now let hi and xi be the height and centered age values, respectively, on row i. Fit the following
+models to the data in d1:
+
+```{r models}
+set.seed(89)
+mean_height <- mean(d$height)
+start_mu <- 0
+start_sd <- 100
+sigma_limit <- 30
+
+m6_1_1 <- map(
+ alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b*age, 
+  a ~ dnorm(mean_height, start_sd),
+  b ~ dnorm(start_mu, start_sd),
+  sigma ~ dunif(0, sigma_limit)
+  ),
+  d 
+)
+
+m6_1_2 <- map(
+ alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b*age + c*(age^2), 
+  a ~ dnorm(mean_height, start_sd),
+  b ~ dnorm(start_mu, start_sd),
+  c ~ dnorm(start_mu, start_sd),
+  sigma ~ dunif(0, sigma_limit)
+  ),
+  d 
+)
+
+m6_1_3 <- map(
+ alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b*age + c*(age^2) + d*(age^3),  
+  a ~ dnorm(mean_height, start_sd),
+  b ~ dnorm(start_mu, start_sd),
+  c ~ dnorm(start_mu, start_sd),
+  d ~ dnorm(start_mu, start_sd),
+  sigma ~ dunif(0, sigma_limit)
+  ),
+  d 
+)
+
+m6_1_4 <- map(
+ alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b*age + c*(age^2) + d*(age^3) + e*(age^4),  
+  a ~ dnorm(mean_height, start_sd),
+  b ~ dnorm(start_mu, start_sd),
+  c ~ dnorm(start_mu, start_sd),
+  d ~ dnorm(start_mu, start_sd),
+  e ~ dnorm(start_mu, start_sd),
+  sigma ~ dunif(0, sigma_limit)
+  ),
+  d 
+)
+
+m6_1_5 <- map(
+ alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b*age + c*(age^2) + d*(age^3) + e*(age^4) + f*(age^5),  
+  a ~ dnorm(mean_height, start_sd),
+  b ~ dnorm(start_mu, start_sd),
+  c ~ dnorm(start_mu, start_sd),
+  d ~ dnorm(start_mu, start_sd),
+  e ~ dnorm(start_mu, start_sd),
+  f ~ dnorm(start_mu, start_sd),
+  sigma ~ dunif(0, sigma_limit)
+  ),
+  d 
+)
+
+m6_1_6 <- map(
+ alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b*age + c*(age^2) + d*(age^3) + e*(age^4) + f*(age^5) + g*(age^6),  
+  a ~ dnorm(mean_height, start_sd),
+  b ~ dnorm(start_mu, start_sd),
+  c ~ dnorm(start_mu, start_sd),
+  d ~ dnorm(start_mu, start_sd),
+  e ~ dnorm(start_mu, start_sd),
+  f ~ dnorm(start_mu, start_sd),
+  g ~ dnorm(start_mu, start_sd),
+  sigma ~ dunif(0, sigma_limit)
+  ),
+  d 
+)
+
+
+```
+
+Use map to fit these. Use weakly regularizing priors for all parameters.
+
+Note that fitting all of these polynomials to the height-by-age relationship is not a good way to
+derive insight. It would be better to have a simpler approach that would allow for more insight, like
+perhaps a piecewise linear model. But the set of polynomial families above will serve to help you
+practice and understand model comparison and averaging.
+
+## Question 1
+
+Compare the models above, using WAIC. Compare the model rankings, as well as the WAIC weights.
+
+```{r Q1}
+height_models <- compare(m6_1_1, m6_1_2, m6_1_3, m6_1_4, m6_1_5, m6_1_6)
+height_models
+plot(height_models, SE=TRUE, dSE=TRUE)
+```
+
+## Question 2
+
+For each model, produce a plot with model averaged mean and 97% confidence interval of the mean, superimposed on the raw data. 
+
+How do predictions differ across models?
+
+```{r Q2}
+models <- c(m6_1_1, m6_1_2, m6_1_3, m6_1_4, m6_1_5, m6_1_6) 
+  
+age.seq <- seq(-1.5,3.5,0.1)
+for (i in 1:length(models)){
+  sim_height <- sim(models[i][[1]], data=list(age=age.seq), n=1000)
+  height.PI <- apply( sim_height , 2 , PI , prob=0.97 )
+  height.mu <- apply( sim_height, 2, mean)
+  height.prediction <- data.frame(age.seq, height.mu, t(height.PI))
+  colnames(height.prediction) <- c('age', 'height_mean', 'lower', 'upper')
+  
+  g <- ggplot(height.prediction, aes(x=age, y=height_mean)) +
+    geom_point() + 
+    geom_ribbon(aes(ymin=lower, ymax=upper), alpha=0.2) +
+    theme_bw() +
+    geom_point(data=d, aes(x=age, y=height), col="red") +
+    expand_limits(y=c(0,5)) +
+    labs(title=paste("Model with",i,"variable(s)"))
+  print(g)
+}
+```
+
+All models up to 3 variables to not fit the data so well. Models with 4 or more variables fit the data well, but do not generalise well outside the data. 
+
+## Question 3
+
+Now also plot the model averaged predictions, across all models. 
+
+In what ways do the averaged predictions differ from the predictions of the model with the lowest WAIC value?
+
+```{r Q3}
+ensemble_model <- ensemble(m6_1_1, m6_1_2, m6_1_3, m6_1_4, m6_1_5, m6_1_6, data=list(age=age.seq))
+
+sim_height_en <- ensemble_model$sim
+height.PI_en <- apply( sim_height_en , 2 , PI , prob=0.97 )
+height.mu_en <- apply( sim_height_en, 2, mean)
+height.prediction_en <- data.frame(age.seq, height.mu_en, t(height.PI_en))
+colnames(height.prediction_en) <- c('age', 'height_mean', 'lower', 'upper')
+
+ggplot(height.prediction_en, aes(x=age, y=height_mean)) +
+  geom_point() + 
+  geom_ribbon(aes(ymin=lower, ymax=upper), alpha=0.2) +
+  theme_bw() +
+  geom_point(data=d, aes(x=age, y=height), col="red") +
+  expand_limits(y=c(0,5)) +
+  labs(title=paste("Model with",i,"variable(s)"))
+```
+
+## Question 4
+
+Compute the test-sample deviance for each model. This means calculating deviance, but using the data in d2 now. You can compute the log-likelihood of the height data with:
+
+``` {r log_likelihood}
+sum( dnorm( d2$height , mu , sigma , log=TRUE ) )
+```
+
+where mu is a vector of predicted means (based upon age values and MAP parameters) and sigma is the MAP standard deviation.
+
+```{r Q4}
+
+```
+
+## Question 5
+
+Compare the deviances from 6H4 to the WAIC values. It might be easier to compare if you subtract the smallest value in each list from the others. For example, subtract the minimum WAIC from all of the WAIC values so that the best WAIC is normalized to zero. 
+
+Which model makes the best out-of-sample predictions in this case? 
+Does WAIC do a good job of estimating the test deviance?
+
+```{r Q5}
+
+```
+
+## Question 6
+
+Consider the following model:
+
+Assume flat (or nearly flat) priors on alpha and sigma. This model contains more strongly regularizing priors on the coefficients. First, fit this model to the data in d1. Report the MAP estimates and plot the implied predictions. Then compute the out-of-sample deviance using the data in d2, using MAP estimates from the model fit to d1 only. 
+
+How does this model, using regularizing priors, compare to the best WAIC model from earlier? 
+How do you interpret this result?
+
+```{r Q6}
+
+```
