@@ -1,0 +1,215 @@
+---
+title: "Statistical Rethinking - Chapter 5 Questions"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=F}
+library(rethinking)
+library(ggplot2)
+data(foxes)
+d <- foxes
+```
+
+## Question 1
+Fit two bivariate Gaussian regressions, using map: 
+(1) body weight as a linear function of territory size (area), and 
+(2) body weight as a linear function of groupsize. Plot the results of these regressions, displaying the MAP regression line and the 95% interval of the mean. Is either variable important for predicting fox body weight?
+
+```{r Q1_1}
+set.seed(89)
+flist5.1_1 <- alist(
+  weight ~ dnorm(mu, sigma),
+  mu <- a + b*area, 
+  a ~ dnorm(4, 100),
+  b ~ dnorm(0, 100),
+  sigma ~ dunif(0,50)
+)
+
+m5.1_1 <- map(flist5.1_1, d)
+
+area.seq <- 0:6
+sim_weight <- sim(m5.1_1, data=list(area=area.seq), n=1000)
+area.PI <- apply( sim_weight , 2 , PI , prob=0.89 )
+area.mu <- apply( sim_weight, 2, mean)
+area.prediction <- data.frame(area.seq ,area.mu, t(area.PI))
+colnames(area.prediction) <- c('area', 'weight_mean', 'lower', 'upper')
+
+ggplot(area.prediction, aes(x=area, y=weight_mean)) +
+  geom_point() + 
+  geom_ribbon(aes(ymin=lower, ymax=upper), alpha=0.2) +
+  theme_bw() +
+  geom_point(data=d, aes(x=area, y=weight), col="red") +
+  expand_limits(y=c(0,5))
+```
+
+Area alone is not an important variable when predicting weight.
+
+```{r Q1_2}
+set.seed(89)
+flist5.1_2 <- alist(
+  weight ~ dnorm(mu, sigma),
+  mu <- a + b*groupsize, 
+  a ~ dnorm(4, 100),
+  b ~ dnorm(0, 100),
+  sigma ~ dunif(0,50)
+)
+
+m5.1_2 <- map(flist5.1_2, d)
+groupsize.seq <- 0:8
+sim_weight2 <- sim(m5.1_2, data=list(groupsize=groupsize.seq), n=1000)
+weight.PI <- apply( sim_weight2 , 2 , PI , prob=0.89 )
+weight.mu <- apply( sim_weight2, 2, mean)
+weight.prediction <- data.frame(groupsize.seq, weight.mu, t(weight.PI))
+colnames(weight.prediction) <- c('groupsize', 'weight_mean', 'lower', 'upper')
+
+ggplot(weight.prediction, aes(x=groupsize, y=weight_mean)) +
+  geom_point() + 
+  geom_ribbon(aes(ymin=lower, ymax=upper), alpha=0.2) +
+  theme_bw() +
+  geom_point(data=d, aes(x=groupsize, y=weight), col="red") +
+  expand_limits(y=c(0,5))
+```
+
+Group size alone is not an important variable when predicting weight.
+
+## Question 2
+Now fit a multiple linear regression with weight as the outcome and both area and groupsize
+as predictor variables. Plot the predictions of the model for each predictor, holding the other predictor
+constant at its mean. What does this model say about the importance of each variable? Why do you
+get different results than you got in the exercise just above?
+
+```{r Q2}
+set.seed(89)
+flist5.2 <- alist(
+  weight ~ dnorm(mu, sigma),
+  mu <- a + b*area +c*groupsize, 
+  a ~ dnorm(4, 100),
+  b ~ dnorm(0, 100),
+  c ~ dnorm(0, 100),
+  sigma ~ dunif(0,50)
+)
+
+m5.2 <- map(flist5.2, d)
+plot(precis(m5.2))
+```
+
+We can see that there may be some value in having both area and group size as predictors. We now look at the counterfactual plots for this model.
+
+```{r Q2_1}
+# Prepare new conterfactual data holding area constant
+
+# Take the average area value and a range of group sizes
+A.avg <- mean(d$area)
+R.seq <- 1:9
+
+# Make this the data frame on which we will predict
+pred.data <- data.frame(
+  groupsize=R.seq,
+  area=A.avg
+)
+
+# Make predictions on this dataframe using the multivariate model
+mu <- link( m5.2 , data=pred.data )
+
+# Get mean and intervals for predicted mean and sd
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI )
+
+R.sim <- sim( m5.2 , data=pred.data , n=1e4 )
+R.PI <- apply( R.sim , 2 , PI )
+
+# Combine into one handy dataframe
+q2_1_plot <- data.frame(pred.data, mu.mean, t(mu.PI), t(R.PI))
+colnames(q2_1_plot) <- c("groupsize", "area", "mu_mean", "mu_lower", "mu_upper", "sd_lower", "sd_upper")
+
+ggplot(q2_1_plot) +
+  geom_point(aes(x=groupsize, y=mu_mean), col="red") +
+  geom_ribbon(aes(x=groupsize, ymin=mu_lower, ymax=mu_upper), alpha=0.4) +
+  geom_ribbon(aes(x=groupsize, ymin=sd_lower, ymax=sd_upper), alpha=0.2) +
+  theme_bw() +
+  labs(x="Group Size", y="Predicted weight", title="Predictions holding area constant")
+```
+
+```{r Q2_2}
+# Prepare new conterfactual data holding groupsize constant
+
+# Take the average area value and a range of group sizes
+A.avg_2 <- mean(d$groupsize)
+R.seq_2 <- 0:6
+
+# Make this the data frame on which we will predict
+pred.data_2 <- data.frame(
+  area=R.seq,
+  groupsize=A.avg
+)
+
+# Make predictions on this dataframe using the multivariate model
+mu_2 <- link( m5.2 , data=pred.data_2 )
+
+# Get mean and intervals for predicted mean and sd
+mu.mean_2 <- apply( mu_2 , 2 , mean )
+mu.PI_2 <- apply( mu_2 , 2 , PI )
+
+R.sim_2 <- sim( m5.2 , data=pred.data_2 , n=1e4 )
+R.PI_2 <- apply( R.sim_2 , 2 , PI )
+
+# Combine into one handy dataframe
+q2_2_plot <- data.frame(pred.data_2, mu.mean_2, t(mu.PI_2), t(R.PI_2))
+colnames(q2_2_plot) <- c("area", "groupsize", "mu_mean", "mu_lower", "mu_upper", "sd_lower", "sd_upper")
+
+ggplot(q2_2_plot) +
+  geom_point(aes(x=area, y=mu_mean), col="red") +
+  geom_ribbon(aes(x=area, ymin=mu_lower, ymax=mu_upper), alpha=0.4) +
+  geom_ribbon(aes(x=area, ymin=sd_lower, ymax=sd_upper), alpha=0.2) +
+  theme_bw() +
+  labs(x="Area", y="Predicted weight", title="Predictions holding group size constant")
+```
+
+Suddenly the two variables seem to be important for the model when combined into a multivariate model.
+
+## Question 3
+Finally, consider the avgfood variable. Fit two more multiple regressions: 
+
+(1) body weight as an additive function of avgfood and groupsize, and 
+(2) body weight as an additive function of all three variables, avgfood and groupsize and area.
+
+Compare the results of these models to the
+previous models you’ve fit, in the first two exercises. 
+
+(a) Is avgfood or area a better predictor of body weight? If you had to choose one or the other to include in a model, which would it be? Support your assessment with any tables or plots you choose. 
+(b) When both avgfood or area are in the same model, their effects are reduced (closer to zero) and their standard errors are larger than when they are included in separate models. Can you explain this result?
+  
+```{r Q3}
+# Fit both the models
+set.seed(89)
+# Model 1: Weight as an additive function of average food and group size
+flist5.3_1 <- alist(
+  weight ~ dnorm(mu, sigma),
+  mu <- a + b*avgfood +c*groupsize, 
+  a ~ dnorm(4, 50),
+  b ~ dnorm(0, 50),
+  c ~ dnorm(0, 50),
+  sigma ~ dunif(0,50)
+)
+
+m5.3_1 <- map(flist5.3_1, d)
+plot(precis(m5.3_1))
+
+# Model 2: Weight as an additive function of average food, group size, and area
+flist5.3_2 <- alist(
+  weight ~ dnorm(mu, sigma),
+  mu <- a + b*avgfood + c*groupsize + d*area, 
+  a ~ dnorm(4, 50),
+  b ~ dnorm(0, 50),
+  c ~ dnorm(0, 50),
+  d ~ dnorm(0, 50),
+  sigma ~ dunif(0,50)
+)
+
+m5.3_2 <- map(flist5.3_2, d)
+plot(precis(m5.3_2))
+```
+
+Using all 3 variables introduces more uncertainty in the overall model. It is likely that some features are interdependent. e.g. average food is probably dependent on area.
